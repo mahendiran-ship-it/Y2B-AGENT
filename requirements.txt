@@ -1,0 +1,3 @@
+# Y2B Agent has NO Python dependencies - it only uses the standard library (Python 3.8+).
+# You only need a llama.cpp runtime (llama-server) and any .gguf model:
+#   Termux:  pkg install llama-cpp

@@ -1,0 +1,18 @@
+# models are big - never commit them
+*.gguf
+*.bin
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# local state / logs
+.y2b/
+server.log
+*.log
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
