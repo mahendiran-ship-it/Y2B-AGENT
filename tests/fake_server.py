@@ -16,9 +16,33 @@ BADHTML = ('```html\n<html><head><link rel="stylesheet" href="missing.css"></hea
            '<body><script>document.getElementById("nope").innerText=1;</script></body></html>\n```')
 
 
+REPORT = ("# Wireshark Overview\nWireshark is a *network protocol analyzer* \u2013 caf\u00e9 \u20b9100.\n\n"
+          "## Key points\n- Capture packets\n- Filter traffic\n\n## Steps\n1. Install\n2. Capture\n\n"
+          "## Summary table\n| Item | Note |\n|---|---|\n| Free | Open source |\n")
+DECK = ("# Marine Pollution\nAn overview for everyone\n\n## Causes\n- Plastic waste\n- Oil spills\n\n"
+        "## Effects\n- Wildlife harm\n\n## Solutions\n1. Reduce plastic\n2. Clean-ups\n\n"
+        "## Data\n| Year | Tonnes |\n|---|---|\n| 2020 | 8 |\n")
+SHEET = ("# Student Marks\n## Marks\n| Name | Maths | Science | Total |\n|---|---|---|---|\n"
+         "| Asha | 90 | 85 | =SUM(B{row}:C{row}) |\n| Ravi | 78 | 88 | =SUM(B{row}:C{row}) |\n")
+
+
+def doc_reply(system, last):
+    """Answers for the document generator prompt (see y2b_docs.generation_system)."""
+    if "empty-doc" in last:
+        return ""
+    low = system.lower()
+    if "slide presentation" in low:
+        return DECK
+    if "spreadsheet" in low:
+        return "Here are some students, they did well." if "prose-sheet" in last else SHEET
+    return REPORT
+
+
 def reply_for(messages):
     system = messages[0]["content"] if messages and messages[0]["role"] == "system" else ""
     last = messages[-1]["content"]
+    if "document generator" in system.lower():
+        return doc_reply(system, last)
     if "code" in system.lower() and "programmer" in system.lower():
         if "failed" in last.lower() or "change requested" in last.lower():
             return FIXED

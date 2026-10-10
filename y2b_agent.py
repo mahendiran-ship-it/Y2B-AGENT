@@ -10,7 +10,8 @@ Y2B Agent  -  an offline, model-agnostic AI coding agent for Termux (and any Lin
 * Also works with any OpenAI-compatible local server (llama-server, Ollama, LM Studio, ...).
 * Falls back to llama-completion / llama-cli (slower, reloads the model every reply).
 * Real streaming, a tool-using agent loop, and an auto-fix loop for broken code.
-* Python standard library only. No pip install needed.
+* The chat + coding agent is Python standard library only. Optional offline document tools (PDF, Word,
+  PowerPoint, Excel) live in y2b_docs.py and need the packages in requirements.txt.
 
 Run:  python y2b_agent.py          (or just `y2b` after running install.sh)
 Help: python y2b_agent.py --help
@@ -35,7 +36,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "1.0.3"
+try:
+    import y2b_docs as docs  # optional offline PDF / Word / PowerPoint / Excel tools
+except ImportError:          # file missing: chat and coding keep working, document requests say why
+    docs = None
+
+__version__ = "1.1.0"
 AUTHOR = "Mahzend"
 APP = "Y2B Agent"
 
@@ -916,6 +922,8 @@ class Agent:
         self.last_file = None   # last file created/edited (for 'fix it', 'open it again')
         self.last_html = None
         self._http = None
+        self.docs_dir = None    # extra folder documents may be saved to (--docs-dir)
+        self.last_doc = None    # path of the last document created
 
     # ---- prompt building ----
     def system_prompt(self):
@@ -1046,7 +1054,7 @@ class Agent:
             say(random.choice(self.GREETS))
             return
         try:
-            if (self.edit_task(text) or self.open_task(text) or self.file_task(text)
+            if (self.doc_task(text) or self.edit_task(text) or self.open_task(text) or self.file_task(text)
                     or self.run_task(text)):
                 return
             self.agent_loop(text)
@@ -1054,6 +1062,142 @@ class Agent:
             say(str(e), err=True)
         except KeyboardInterrupt:
             print(YE("\n(interrupted)\n"))
+
+    # ---- fast path 0: office documents (PDF / Word / PowerPoint / Excel) ----
+    @staticmethod
+    def _ask_line(prompt):
+        try:
+            return input("%s %s " % (YE("?"), prompt)).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return ""
+
+    @staticmethod
+    def _ask_block(prompt):
+        print(DM("%s (finish with a line containing only :wq)" % prompt))
+        lines = []
+        while True:
+            try:
+                ln = input()
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                print()
+                return ""
+            if ln.strip() == ":wq":
+                break
+            lines.append(ln)
+        return "\n".join(lines).strip()
+
+    def gen_doc(self, fmt, text, req, extra=""):
+        """Ask the model for the document content as Markdown (it is parsed as data, never executed)."""
+        msgs = [{"role": "system", "content": docs.generation_system(fmt, req.slides, req.allow_formulas)},
+                {"role": "user", "content": "Request: %s%s" % (text, extra)}]
+        old = self.llm.gen
+        self.llm.gen = max(old, min(2048, self.llm.ctx // 2))  # documents are longer than a typical reply
+        try:
+            return docs.strip_fences(self.collect(msgs, "writing " + docs.LABEL[fmt]))
+        finally:
+            self.llm.gen = old
+
+    def doc_task(self, text):
+        """'make a 5-slide PowerPoint about X' -> real .pptx on disk. Returns False if this is not a document request."""
+        if docs is None:
+            if re.search(r"\b(pdf|docx|pptx|xlsx|powerpoint|excel)\b", text, re.I) and self.MAKE_RE.search(text):
+                say("Document tools are not installed (y2b_docs.py is missing). Re-run install.sh.", err=True)
+                return True
+            return False
+        req = docs.detect_request(text)
+        if req is None:
+            return False
+        missing = docs.missing_libraries(req.formats)
+        if missing:
+            say(docs.install_hint(missing), err=True)
+            return True
+        paths = docs.DocPaths(self.tools.work, self.docs_dir)
+        try:
+            folder, note = paths.resolve(req.dest)  # fail early, before spending time on the model
+        except docs.DocError as e:
+            say(str(e), err=True)
+            return True
+        if note:
+            print(YE(note))
+        provided = req.provided
+        if req.needs_content and not provided:
+            provided = self._ask_block("Paste the content for the document")
+            if not provided:
+                say("No content received, so nothing was created.")
+                return True
+        elif not (provided or req.topic or req.title or req.filename):
+            ans = self._ask_line("What should the %s be about?" % docs.LABEL[req.formats[0]])
+            if not ans:
+                say("OK, nothing created.")
+                return True
+            req.topic = ans
+            text = "%s (topic: %s)" % (text, ans)
+        trusted = paths.is_trusted(folder)
+        cache, saved, failed = {}, [], []
+        for fmt in req.formats:
+            label = docs.LABEL[fmt]
+            kind = fmt if fmt in ("pptx", "xlsx") else "text"
+            if provided:
+                content = provided
+            else:
+                if kind not in cache:
+                    cache[kind] = self.gen_doc(fmt, text, req)
+                content = cache[kind]
+                if fmt == "pptx" and req.slides and content.strip():
+                    got = docs.count_slides(docs.parse_markdown(content))
+                    if got != req.slides:  # one retry, keep whichever is closer to the requested count
+                        again = self.gen_doc(fmt, text, req, "\nIMPORTANT: it must be exactly %d slides in total, "
+                                             "counting the title slide." % req.slides)
+                        if again.strip() and abs(docs.count_slides(docs.parse_markdown(again)) - req.slides) < abs(got - req.slides):
+                            content = cache[kind] = again
+            if not content.strip():
+                failed.append("%s: the model returned no content. Try again, or give the text yourself." % label)
+                continue
+            hint = docs.document_title(docs.parse_markdown(content))
+            title = req.title or hint or (req.topic.title() if req.topic else "")
+            try:
+                name = docs.choose_filename(req, fmt, title or hint)
+            except docs.DocError as e:
+                failed.append("%s: %s" % (label, e))
+                continue
+            print("%s create %s %s %s" % (CY("→"), label, BD(name), DM("in " + str(folder))))
+            print(DM("┌" + "─" * 40))
+            for ln in content.splitlines()[:15]:
+                print(DM("│ ") + ln[:90])
+            if content.count("\n") >= 15:
+                print(DM("│ ... more"))
+            print(DM("└" + "─" * 40))
+            if not self.tools.confirm("Save %s file?" % label, force=not trusted):
+                failed.append("%s: you chose not to save it." % label)
+                continue
+            try:
+                res = docs.save_document(fmt, content, name, folder, paths, title=title or None,
+                                         allow_formulas=req.allow_formulas, slides=req.slides)
+                if not (os.path.isfile(str(res.path)) and os.path.getsize(str(res.path)) > 0):  # independent re-check
+                    raise docs.DocError("The file is missing or empty after saving: %s" % res.path)
+            except docs.DocError as e:
+                print(RD("✗ " + str(e).split("\n")[0]))
+                failed.append("%s: %s" % (label, e))
+                continue
+            for w in res.warnings:
+                print(YE("! " + w))
+            print(GR("✓ saved ") + str(res.path) + DM("  (%s)" % res.summary()))
+            saved.append(res)
+            self.last_doc = str(res.path)
+        if saved:
+            msg = "Saved " + "; ".join("%s (%s) at %s" % (docs.LABEL[r.fmt], r.summary(), r.path) for r in saved)
+            if failed:
+                msg += ". Not saved: " + " | ".join(failed)
+            say(msg + ("." if not failed else ""))
+        else:
+            say("Nothing was saved. " + " | ".join(failed), err=True)
+        self.hist.append(("user", text))
+        self.hist.append(("assistant", ("Created " + ", ".join(str(r.path) for r in saved)) if saved
+                          else "No document was created: " + " | ".join(failed)))
+        return True
 
     # ---- fast path 1: run a command ----
     def run_task(self, text):
@@ -1419,13 +1563,14 @@ HELP = """
 %(shell)s     /run <command>     !<command>     /open [page.html]
 %(model)s     /models  /model <n>  /info  /doctor  /ctx
 %(mode)s      /auto  /fix <n>  /steps <n>  /temp <0-1>  /voice  /listen
+%(docs)s      "create a PDF about X" · "make a 5-slide PowerPoint about X" · Word · Excel   /docs
 %(misc)s      /cls  /help  /exit
 """
 
 
 def help_text():
     return HELP % {k: BD(v) for k, v in dict(chat="Chat", mem="Memory", files="Files", shell="Shell",
-                                              model="Model", mode="Mode", misc="Misc").items()}
+                                              model="Model", mode="Mode", docs="Docs", misc="Misc").items()}
 
 
 class App:
@@ -1511,7 +1656,22 @@ def doctor(args, conf):
     for url in ("http://127.0.0.1:8080", "http://127.0.0.1:11434"):
         print(" server %-22s: %s" % (url, GR("running") if OpenAIBackend(url).healthy() else DM("not running")))
     print(" config       :", CONF_FILE, conf)
+    print_docs_status(args)
     print()
+
+
+def print_docs_status(args):
+    if docs is None:
+        print(" documents    :", RD("y2b_docs.py not found (PDF/Word/PowerPoint/Excel disabled)"))
+        return
+    paths = docs.DocPaths(getattr(args, "work", None) or os.getcwd(), getattr(args, "docs_dir", None))
+    libs, folder, state, note = docs.docs_status(paths)
+    for lab, pkg in libs:
+        print(" %-12s : %s" % (lab, GR(pkg) if pkg else RD("missing") + DM("  (pip install %s)" % docs.LIBS[
+            next(f for f in docs.FORMATS if docs.LABEL[f] == lab)][1])))
+    print(" save to      : %s  [%s]" % (folder, GR(state) if state == "ready" else RD(state)))
+    if note:
+        print(" " + YE(note))
 
 
 def cmd_loop(app, agent, tools):
@@ -1641,6 +1801,9 @@ def cmd_loop(app, agent, tools):
                 llm.backend.describe(), (app.info or {}).get("name", "-"), llm.ctx, llm.gen, llm.temp, tools.work))
         elif cmd == "doctor":
             doctor(app.args, app.conf)
+        elif cmd == "docs":
+            print_docs_status(app.args)
+            print(DM(' try: "create a PDF about Wireshark and save it in AGENT WORK"\n'))
         elif cmd in ("models", "model"):
             models = discover_models()
             if cmd == "model" and arg:
@@ -1696,6 +1859,8 @@ def build_parser():
     ap.add_argument("--temp", type=float, default=0.2, help="temperature (default 0.2)")
     ap.add_argument("--threads", type=int, help="CPU threads (default: auto)")
     ap.add_argument("--work", default=None, help="workspace folder (default: current directory)")
+    ap.add_argument("--docs-dir", default=None,
+                    help="extra folder PDF/Word/PowerPoint/Excel files may be saved to (also the default save folder)")
     ap.add_argument("--auto", action="store_true", help="auto-approve file writes and commands (careful!)")
     ap.add_argument("--steps", type=int, default=6, help="max tool steps per request (default 6)")
     ap.add_argument("--fix", type=int, default=3, help="max auto-fix attempts for broken code (0 = off)")
@@ -1773,6 +1938,7 @@ def main(argv=None):
     tools = Tools(args.work, args.auto)
     mem = load_json(MEM_FILE, {"facts": []})
     agent = Agent(llm, tools, mem, steps=args.steps, fix=args.fix)
+    agent.docs_dir = args.docs_dir
 
     show_banner()
     inf = app.info or {}

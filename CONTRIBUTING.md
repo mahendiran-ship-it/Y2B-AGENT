@@ -1,11 +1,14 @@
 # Contributing to Y2B Agent
 
-Thanks for helping! Y2B Agent is intentionally **one file, zero dependencies** so it installs anywhere in seconds.
+Thanks for helping! The Y2B Agent core (`y2b_agent.py`) is intentionally **one file with zero dependencies** so it installs anywhere in seconds.
+The optional offline document tools live in a separate module, `y2b_docs.py`.
 
 ## Ground rules
-- Python standard library only (3.8+). No `pip install` requirements.
+- `y2b_agent.py`: Python standard library only (3.8+). No `pip install` requirements.
+- `y2b_docs.py` may import only reportlab, python-docx, python-pptx and openpyxl, and only lazily inside functions, so Y2B still starts when they are missing. No image libraries, no network calls.
 - Keep it Termux-friendly: small screens, no heavy output, no assumptions about root.
 - Anything that writes files or runs commands must ask for confirmation (unless `--auto`).
+- Never run model-written code to build a document; the model only produces Markdown that is parsed as data.
 
 ## Dev setup
 ```bash

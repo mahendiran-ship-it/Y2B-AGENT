@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+- **Offline document generation**: ask for a PDF, an editable Word document, a PowerPoint presentation or an Excel workbook in plain language and Y2B saves a real file (`y2b_docs.py`; uses reportlab, python-docx, python-pptx, openpyxl).
+- Files can be saved straight into Android's `AGENT WORK` folder; storage permission problems are explained (`termux-setup-storage`). New `--docs-dir` option and `/docs` command; `--doctor` lists the document libraries.
+- Safe by design: the model writes Markdown that is parsed as data (no generated code runs), paths are validated, existing files are never overwritten, spreadsheet text is never turned into formulas unless asked, and success is only reported after the file is reopened and verified.
+- `install.sh` installs the document packages (skip with `--no-docs`) and copies `y2b_docs.py`. The chat and coding agent still needs no packages.
+
 ## 1.0.3
 - Web pages are checked before opening (missing CSS/JS files, scripts that use ids that do not exist, unbalanced braces, CDN links that cannot load offline; exact JS syntax check when `node` is installed) and auto-fixed.
 - Follow-ups work on the last file: "it won't work, fix it", "add a score counter to it", "open it again in chrome".

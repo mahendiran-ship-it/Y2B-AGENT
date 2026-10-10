@@ -1,3 +1,15 @@
-# Y2B Agent has NO Python dependencies - it only uses the standard library (Python 3.8+).
-# You only need a llama.cpp runtime (llama-server) and any .gguf model:
+# Y2B Agent's chat + coding agent needs NO Python packages (standard library only, Python 3.8+).
+# You still need a llama.cpp runtime (llama-server) and any .gguf model:
 #   Termux:  pkg install llama-cpp
+#
+# The OPTIONAL offline document tools (PDF, Word, PowerPoint, Excel) need these four packages.
+# They are only used when you ask for a document; generating one needs no internet.
+#   pip install -r requirements.txt        (or run: bash install.sh)
+#
+# Note: reportlab and python-pptx depend on Pillow themselves, so pip installs it too. Y2B does not
+# use it and does not add image support. On Termux install it from pkg first (install.sh does this):
+#   pkg install python-pillow python-lxml
+reportlab
+python-docx
+python-pptx
+openpyxl
