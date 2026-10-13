@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.1
+- Multi-line pastes are now sent as ONE prompt. Before, every pasted line was sent to the model as a separate message, so long project prompts were answered line by line and never built. New `/prompt <file>` command sends a whole file as a single request.
 - Fixed files silently not being saved: the "Save file?" prompt could be auto-answered "No" by leftover pasted lines or broken input (e.g. after switching away from Termux). Pending keystrokes are now flushed before every question, an empty or unreadable answer uses the default, and "Save file?" now defaults to **Yes** (`[Y/n]`). Dangerous commands still default to No.
 - Generated files are first kept in `.y2b_unsaved/` inside the workspace, so nothing is lost if saving is declined; the copy is removed once the file is really saved.
 

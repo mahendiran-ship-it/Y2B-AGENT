@@ -1606,7 +1606,7 @@ class _Refusal(Exception):
 HELP = """
 %(chat)s      just type naturally, e.g. "create calc.py that adds two numbers and run it"
 %(mem)s    remember <fact>    /mem    /forget    /clear (reset chat)
-%(files)s     /ls [dir]  /cat <file>  /write <file>  /rm <file>  /cd <dir>  /pwd
+%(files)s     /ls [dir]  /cat <file>  /write <file>  /rm <file>  /prompt <file>  /cd <dir>  /pwd
 %(shell)s     /run <command>     !<command>     /open [page.html]
 %(model)s     /models  /model <n>  /info  /doctor  /ctx
 %(mode)s      /auto  /fix <n>  /steps <n>  /temp <0-1>  /voice  /listen
@@ -1721,11 +1721,30 @@ def print_docs_status(args):
         print(" " + YE(note))
 
 
+def read_user_line():
+    """Read one prompt. If the terminal delivers a multi-line paste, join all the pasted lines
+    into ONE prompt instead of treating every line as a separate message."""
+    first = input(prompt_str())
+    lines = [first]
+    try:
+        import select
+        while sys.stdin.isatty() and select.select([sys.stdin], [], [], 0.08)[0]:
+            more = sys.stdin.readline()
+            if not more:
+                break
+            lines.append(more.rstrip("\r\n"))
+    except Exception:
+        pass
+    if len(lines) > 1:
+        print(DM("(pasted %d lines, sending as one prompt)" % len(lines)))
+    return "\n".join(lines).strip()
+
+
 def cmd_loop(app, agent, tools):
     llm = app.llm
     while True:
         try:
-            line = input(prompt_str()).strip()
+            line = read_user_line()
         except (EOFError, KeyboardInterrupt):
             bye()
             return
@@ -1791,6 +1810,16 @@ def cmd_loop(app, agent, tools):
                 buf.append(ln)
             tools.write(arg, "\n".join(buf))
             print()
+        elif cmd == "prompt":
+            if not arg:
+                print(RD("usage: /prompt <file>   (sends the whole file as one request)\n"))
+                continue
+            pp = tools.path(arg)
+            if not os.path.isfile(pp):
+                print(RD("file not found: %s\n" % arg))
+                continue
+            with open(pp, errors="replace") as f:
+                agent.handle(f.read().strip())
         elif cmd == "rm":
             p = tools.path(arg)
             if os.path.isfile(p) and tools.inside(p) and tools.confirm("Delete %s?" % arg, force=True):
