@@ -100,6 +100,49 @@ class ModelInfoTests(unittest.TestCase):
         self.assertIn(y2b.auto_ctx(900), (1024, 2048, 4096, 8192))
 
 
+class SaveConfirmTests(unittest.TestCase):
+    """Regression: 'Save file?' used to be auto-answered No by stray input and the code was lost."""
+
+    def _tools(self):
+        from unittest import mock  # noqa: F401
+        return y2b.Tools(tempfile.mkdtemp())
+
+    def _write(self, tools, answer):
+        from unittest import mock
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            if isinstance(answer, Exception):
+                with mock.patch("builtins.input", side_effect=answer):
+                    return tools.write("index.html", "<html></html>")
+            with mock.patch("builtins.input", return_value=answer):
+                return tools.write("index.html", "<html></html>")
+
+    def test_empty_answer_saves(self):
+        t = self._tools()
+        self.assertTrue(self._write(t, "").startswith("OK"))
+        self.assertTrue(os.path.isfile(os.path.join(t.work, "index.html")))
+
+    def test_closed_input_saves(self):
+        t = self._tools()
+        self.assertTrue(self._write(t, EOFError()).startswith("OK"))
+
+    def test_garbage_answer_saves(self):
+        t = self._tools()
+        self.assertTrue(self._write(t, "\ufffd\ufffd live clock").startswith("OK"))
+
+    def test_explicit_no_keeps_recovery_copy(self):
+        t = self._tools()
+        self.assertTrue(self._write(t, "n").startswith("USER DENIED"))
+        self.assertFalse(os.path.exists(os.path.join(t.work, "index.html")))
+        self.assertTrue(os.path.isfile(os.path.join(t.work, ".y2b_unsaved", "index.html")))
+
+    def test_dangerous_still_defaults_to_no(self):
+        from unittest import mock
+        t = self._tools()
+        with redirect_stdout(io.StringIO()), mock.patch("builtins.input", return_value=""):
+            self.assertFalse(t.confirm("Run command?", force=True, default=True))
+
+
 class AgentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

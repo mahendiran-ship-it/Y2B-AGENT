@@ -775,14 +775,42 @@ class Tools:
     def inside(self, p):
         return p == self.work or p.startswith(self.work.rstrip(os.sep) + os.sep)
 
-    def confirm(self, msg, force=False):
+    @staticmethod
+    def flush_stdin():
+        """Drop stray keystrokes / pasted lines still waiting in the terminal, so they are
+        not mistaken for the answer to a question (this used to auto-answer 'No')."""
+        try:
+            import termios
+            if sys.stdin.isatty():
+                termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+        except Exception:
+            pass
+
+    def confirm(self, msg, force=False, default=False):
+        """Ask yes/no. `default` is used for an empty answer or a closed input (EOF).
+        Dangerous actions (force=True) always default to No."""
         if self.auto and not force:
             return True
+        if force:
+            default = False
+        self.flush_stdin()
+        hint = "[Y/n]" if default else "[y/N]"
         try:
-            return input("%s %s %s " % (YE("?"), msg, DM("[y/N]"))).strip().lower() in ("y", "yes")
-        except (EOFError, KeyboardInterrupt):
+            ans = input("%s %s %s " % (YE("?"), msg, DM(hint)))
+        except EOFError:
+            print()
+            return default
+        except KeyboardInterrupt:
             print()
             return False
+        ans = ans.strip().lower()
+        if not ans:
+            return default
+        if ans in ("y", "yes"):
+            return True
+        if ans in ("n", "no"):
+            return False
+        return default  # garbage input (e.g. broken bytes after the app lost focus): use the safe default
 
     def write(self, name, content, ask=True):
         p = self.path(name)
@@ -797,13 +825,32 @@ class Tools:
         if lines > 25:
             print(DM("│ ... %d more lines" % (lines - 25)))
         print(DM("└" + "─" * 40))
-        if ask and not self.confirm("Save file?"):
+        # Never lose generated work: keep a recovery copy before asking anything.
+        draft = self.keep_draft(name, content)
+        if ask and not self.confirm("Save file?", default=True):
+            print(YE("Not saved. A recovery copy is in %s" % draft))
             return "USER DENIED the write."
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
             f.write(content.rstrip("\n") + "\n")
         print(GR("✓ saved " + os.path.relpath(p, self.work)))
+        try:
+            os.remove(draft)  # saved for real, recovery copy no longer needed
+        except OSError:
+            pass
         return "OK: wrote %s (%d lines)" % (name, lines)
+
+    def keep_draft(self, name, content):
+        """Write generated content to <work>/.y2b_unsaved/ so it can be recovered if saving is declined."""
+        d = os.path.join(self.work, ".y2b_unsaved")
+        try:
+            os.makedirs(d, exist_ok=True)
+            fp = os.path.join(d, os.path.basename(name) or "unnamed.txt")
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(content.rstrip("\n") + "\n")
+            return fp
+        except OSError:
+            return d
 
     def read(self, name):
         p = self.path(name)

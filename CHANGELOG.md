@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+- Fixed files silently not being saved: the "Save file?" prompt could be auto-answered "No" by leftover pasted lines or broken input (e.g. after switching away from Termux). Pending keystrokes are now flushed before every question, an empty or unreadable answer uses the default, and "Save file?" now defaults to **Yes** (`[Y/n]`). Dangerous commands still default to No.
+- Generated files are first kept in `.y2b_unsaved/` inside the workspace, so nothing is lost if saving is declined; the copy is removed once the file is really saved.
+
 ## 1.1.0
 - **Offline document generation**: ask for a PDF, an editable Word document, a PowerPoint presentation or an Excel workbook in plain language and Y2B saves a real file (`y2b_docs.py`; uses reportlab, python-docx, python-pptx, openpyxl).
 - Files can be saved straight into Android's `AGENT WORK` folder; storage permission problems are explained (`termux-setup-storage`). New `--docs-dir` option and `/docs` command; `--doctor` lists the document libraries.
