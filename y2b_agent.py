@@ -41,7 +41,12 @@ try:
 except ImportError:          # file missing: chat and coding keep working, document requests say why
     docs = None
 
-__version__ = "1.1.0"
+try:
+    import y2b_web as web    # optional built-in website builder (complete futuristic sites on small models)
+except ImportError:
+    web = None
+
+__version__ = "1.2.0"
 AUTHOR = "Mahzend"
 APP = "Y2B Agent"
 
@@ -836,6 +841,7 @@ class Tools:
         print(GR("✓ saved " + os.path.relpath(p, self.work)))
         try:
             os.remove(draft)  # saved for real, recovery copy no longer needed
+            os.rmdir(os.path.dirname(draft))  # only succeeds when empty
         except OSError:
             pass
         return "OK: wrote %s (%d lines)" % (name, lines)
@@ -1345,6 +1351,8 @@ class Agent:
                 name = self.infer_name(text)  # "create a web birthday calculator" -> birthday_calculator.html
             else:
                 return False
+        if web and name.lower().endswith((".html", ".htm")) and web.wants_site(text):
+            return self.site_task(name, text)
         base = [{"role": "system", "content": self.gen_system(name)},
                 {"role": "user", "content": "File: %s\nTask: %s" % (name, text)}]
         code, reply = self.gen_code(base, name)
@@ -1354,6 +1362,25 @@ class Agent:
         say("Here's %s:" % name)
         return self.finish_file(name, code, text, base)
 
+    def site_task(self, name, text, verb="Created", current=""):
+        """Full website: the model writes only short CONTENT lines, y2b_web assembles the tested page."""
+        if not web:
+            say("The website builder is not installed (y2b_web.py is missing). Re-run install.sh.", err=True)
+            return True
+        ask = "Website request: %s" % text.strip()[:700]
+        if current:
+            ask = "Current site: %s\nChange requested: %s" % (current, text.strip()[:400])
+        old = self.llm.gen
+        self.llm.gen = min(old, 600)  # only a few short lines are needed
+        try:
+            reply = self.collect([{"role": "system", "content": web.SPEC_SYSTEM},
+                                  {"role": "user", "content": ask}], "planning " + name)
+        finally:
+            self.llm.gen = old
+        code = web.build_site(web.parse_spec(reply))
+        say("Here's %s (full website: hero, features, particle lab, tools, gallery, about):" % name)
+        return self.finish_file(name, code, text, None, verb=verb, fixable=False)
+
     @staticmethod
     def fix_note(fixes, rc):
         if not fixes:
@@ -1362,7 +1389,7 @@ class Agent:
             return " Auto-fixed in %d attempt%s." % (fixes, "" if fixes == 1 else "s")
         return " Auto-fix tried %d time(s) but it still has problems." % fixes
 
-    def finish_file(self, name, code, text, base, verb="Created"):
+    def finish_file(self, name, code, text, base, verb="Created", fixable=True):
         """Save, then run / open / check the file, auto-fixing problems. Shared by create and edit."""
         r = self.tools.write(name, code)
         if not r.startswith("OK"):
@@ -1375,7 +1402,7 @@ class Agent:
             self.last_html = name
             rc, out = self.check_html(name, code)
             fixes = 0
-            if rc and self.fix_n > 0:
+            if rc and self.fix_n > 0 and fixable:
                 rc, out, code, fixes = self.fix_loop(base, name, code, "page check", True, rc, out,
                                                      check=lambda c: self.check_html(name, c))
             note = "%s %s." % (verb, name) + self.fix_note(fixes, rc)
@@ -1486,6 +1513,16 @@ class Agent:
         name = self.last_file
         with open(p, errors="replace") as f:
             old = f.read()
+        if web and 'name="generator" content="y2b-site"' in old[:4000]:
+            m = re.search(r"const SITE=(\{.*?\});\n", old, re.S)
+            cur = ""
+            try:
+                d = json.loads(m.group(1)) if m else {}
+                cur = "title=%s; tagline=%s; accent=%s" % (d.get("title"), d.get("tagline"), d.get("accent"))
+            except ValueError:
+                pass
+            return self.site_task(name, text + (" open it" if re.search(r"fix|work|open", text, re.I) else ""),
+                                  verb="Updated", current=cur or "(unknown)")
         base = [{"role": "system", "content": self.gen_system(name)},
                 {"role": "user", "content": "Here is the current file %s:\n```\n%s\n```\nChange requested: %s\n"
                                             "Return the complete corrected file in one code block."
@@ -1606,7 +1643,7 @@ class _Refusal(Exception):
 HELP = """
 %(chat)s      just type naturally, e.g. "create calc.py that adds two numbers and run it"
 %(mem)s    remember <fact>    /mem    /forget    /clear (reset chat)
-%(files)s     /ls [dir]  /cat <file>  /write <file>  /rm <file>  /prompt <file>  /cd <dir>  /pwd
+%(files)s     /ls [dir]  /cat <file>  /write <file>  /rm <file>  /prompt <file>  /site <topic>  /cd <dir>  /pwd
 %(shell)s     /run <command>     !<command>     /open [page.html]
 %(model)s     /models  /model <n>  /info  /doctor  /ctx
 %(mode)s      /auto  /fix <n>  /steps <n>  /temp <0-1>  /voice  /listen
@@ -1809,6 +1846,12 @@ def cmd_loop(app, agent, tools):
                     break
                 buf.append(ln)
             tools.write(arg, "\n".join(buf))
+            print()
+        elif cmd == "site":
+            if not arg:
+                print(RD("usage: /site <what the website is about>   (builds index.html)\n"))
+                continue
+            agent.site_task("index.html", "create a website " + arg + " and open it")
             print()
         elif cmd == "prompt":
             if not arg:

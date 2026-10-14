@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+- **Full websites on small models.** A tiny local model cannot write 500+ lines of working JavaScript, so asking for a website gave blank or basic pages. Y2B now asks the model only for short CONTENT lines (title, tagline, features, gallery items, FAQ, about) and assembles a finished, browser-tested page from a built-in template (`y2b_web.py`): loading screen, particle hero with orb and parallax, live clock, animated nav with mobile drawer, theme toggle, search/filter/sort gallery with preview modal, accordion, tabs, particle lab with sliders and colour pickers, calculator, stopwatch, notes, task list, command palette (Ctrl+K or /), keyboard shortcuts, settings panel, toasts, optional sound, reduced-motion support. Works offline, one HTML file.
+- Triggered by words like website, portfolio, futuristic, ultra-modern. New `/site <topic>` command. Follow-ups such as "change the title" rebuild the site instead of asking the small model to rewrite 47 KB.
+- Model text is injected as data (never as code), so odd model output cannot break the page.
+- `install.sh` copies `y2b_web.py` too.
+
 ## 1.1.1
 - Multi-line pastes are now sent as ONE prompt. Before, every pasted line was sent to the model as a separate message, so long project prompts were answered line by line and never built. New `/prompt <file>` command sends a whole file as a single request.
 - Fixed files silently not being saved: the "Save file?" prompt could be auto-answered "No" by leftover pasted lines or broken input (e.g. after switching away from Termux). Pending keystrokes are now flushed before every question, an empty or unreadable answer uses the default, and "Save file?" now defaults to **Yes** (`[Y/n]`). Dangerous commands still default to No.

@@ -11,7 +11,7 @@ if [ -n "${PREFIX:-}" ] && [ -d "$PREFIX/bin" ] && [[ "$PREFIX" == *com.termux* 
 if [ "$IS_TERMUX" = 1 ]; then BIN_DIR="$PREFIX/bin"; else BIN_DIR="$HOME/.local/bin"; fi
 
 if [ "${1:-}" = "--uninstall" ]; then
-  rm -f "$BIN_DIR/y2b" "$APP_DIR/y2b_agent.py" "$APP_DIR/y2b_docs.py"
+  rm -f "$BIN_DIR/y2b" "$APP_DIR/y2b_agent.py" "$APP_DIR/y2b_docs.py" "$APP_DIR/y2b_web.py"
   echo "Y2B Agent removed (your memory/config in $APP_DIR was kept)."
   exit 0
 fi
@@ -40,6 +40,7 @@ mkdir -p "$APP_DIR" "$BIN_DIR"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SRC_DIR/y2b_agent.py" "$APP_DIR/y2b_agent.py"
 cp "$SRC_DIR/y2b_docs.py" "$APP_DIR/y2b_docs.py"
+cp "$SRC_DIR/y2b_web.py" "$APP_DIR/y2b_web.py"
 
 cat > "$BIN_DIR/y2b" <<EOF
 #!/usr/bin/env bash

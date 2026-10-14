@@ -75,7 +75,10 @@ curl -L -O https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/
 y2b
 ```
 
-No installer? Just run the file: `python y2b_agent.py` (the document tools also need `y2b_docs.py` next to it and `pip install -r requirements.txt`).
+No installer? Just run the file: `python y2b_agent.py` (the document tools also need `y2b_docs.py` next to it and `pip install -r requirements.txt`; the website builder needs `y2b_web.py` next to it).
+
+### Websites
+Say *"build a futuristic website about space travel"* (or `/site space travel`) and Y2B writes a complete, offline, animated multi-section site to `index.html`, even with a tiny model. Open it with `/open index.html`.
 
 **Other Linux / macOS:** install [llama.cpp](https://github.com/ggml-org/llama.cpp) so `llama-server` is on your PATH, put a `.gguf` in `~/models`, then `python y2b_agent.py`.
 

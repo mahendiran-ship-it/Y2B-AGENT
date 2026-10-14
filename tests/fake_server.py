@@ -26,6 +26,14 @@ SHEET = ("# Student Marks\n## Marks\n| Name | Maths | Science | Total |\n|---|--
          "| Asha | 90 | 85 | =SUM(B{row}:C{row}) |\n| Ravi | 78 | 88 | =SUM(B{row}:C{row}) |\n")
 
 
+SPEC = ("TITLE: Solar Forge\nTAGLINE: Clean energy tools for makers and builders everywhere.\nACCENT: orange\n"
+        "FEATURE: Heat Maps | See where the energy goes.\nFEATURE: Panels | Compare panel options quickly.\n"
+        "FEATURE: Storage | Plan batteries for any home.\nITEM: Roof Kit | Solar | A starter roof kit.\n"
+        "ITEM: Pump | Water | A solar water pump.\nITEM: Lamp | Solar | A garden lamp.\nITEM: Filter | Water | A clean water filter.\n"
+        "FAQ: Is it cheap? | Costs fall every year.\nFAQ: Does it work at night? | Batteries cover the night.\n"
+        "ABOUT: We build simple energy tools. Everything is made to be open and easy.\n")
+
+
 def doc_reply(system, last):
     """Answers for the document generator prompt (see y2b_docs.generation_system)."""
     if "empty-doc" in last:
@@ -43,6 +51,10 @@ def reply_for(messages):
     last = messages[-1]["content"]
     if "document generator" in system.lower():
         return doc_reply(system, last)
+    if "website content" in system.lower():
+        if "bad-spec" in last:
+            return "I cannot do that. Here is a poem."
+        return SPEC
     if "code" in system.lower() and "programmer" in system.lower():
         if "failed" in last.lower() or "change requested" in last.lower():
             return FIXED

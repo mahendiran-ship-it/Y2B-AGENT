@@ -143,6 +143,46 @@ class SaveConfirmTests(unittest.TestCase):
             self.assertFalse(t.confirm("Run command?", force=True, default=True))
 
 
+class WebBuilderTests(unittest.TestCase):
+    def test_wants_site(self):
+        import y2b_web as w
+        self.assertTrue(w.wants_site("build an ultra-modern futuristic website"))
+        self.assertTrue(w.wants_site("make me a portfolio site"))
+        self.assertFalse(w.wants_site("create a web birthday calculator"))
+
+    def test_parse_spec_uses_model_lines(self):
+        import y2b_web as w
+        from fake_server import SPEC
+        s = w.parse_spec(SPEC)
+        self.assertEqual(s["title"], "Solar Forge")
+        self.assertEqual(s["accent"], "orange")
+        self.assertEqual(len(s["features"]), 3)
+        self.assertEqual(len(s["items"]), 4)
+
+    def test_parse_spec_garbage_falls_back_to_defaults(self):
+        import y2b_web as w
+        s = w.parse_spec("I cannot do that. Here is a poem.")
+        self.assertEqual(s["title"], w.DEFAULTS["title"])
+        self.assertGreaterEqual(len(s["features"]), 6)
+
+    def test_model_text_cannot_break_the_page(self):
+        import y2b_web as w
+        evil = w.parse_spec('TITLE: </script><script>alert(1)</script>\nTAGLINE: x" onload="alert(1) and more text here')
+        html = w.build_site(evil)
+        self.assertEqual(html.count("</script>"), 1)  # only the real closing tag
+        self.assertNotIn("__A1__", html)
+        self.assertNotIn("/*SITE*/null", html)
+
+    def test_template_has_every_required_piece(self):
+        import y2b_web as w
+        html = w.build_site()
+        for needle in ("id=\"loader\"", "id=\"hcv\"", "id=\"lcv\"", "id=\"pal\"", "id=\"theme\"", "id=\"burger\"",
+                       "id=\"top\"", "id=\"calc\"", "id=\"tl\"", "id=\"swd\"", "id=\"note\"", "id=\"q\"",
+                       "id=\"acc\"", "id=\"set\"", "id=\"toasts\"", "prefers-reduced-motion", "AudioContext"):
+            self.assertIn(needle, html)
+        self.assertNotRegex(html.replace("http://www.w3.org/2000/svg", ""), r"https?://")  # fully offline (SVG namespace is not a request)
+
+
 class AgentTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -167,6 +207,29 @@ class AgentTests(unittest.TestCase):
         with redirect_stdout(buf):
             agent.handle(text)
         return buf.getvalue()
+
+    def test_website_request_builds_full_site_and_passes_page_check(self):
+        agent, work = self.make_agent()
+        out = self.handle(agent, "PROJECT: build an ultra-modern futuristic website. Filename: index.html")
+        p = os.path.join(work, "index.html")
+        self.assertTrue(os.path.isfile(p), out)
+        html = open(p, encoding="utf-8").read()
+        self.assertGreater(html.count("\n"), 400)
+        self.assertIn("Solar Forge", html)
+        rc, msg = agent.check_html("index.html")
+        self.assertEqual(rc, 0, msg)
+
+    def test_website_request_with_bad_model_reply_still_works(self):
+        agent, work = self.make_agent()
+        self.handle(agent, "create a futuristic website bad-spec as index.html")
+        self.assertTrue(os.path.isfile(os.path.join(work, "index.html")))
+
+    def test_site_follow_up_rebuilds_instead_of_mangling(self):
+        agent, work = self.make_agent()
+        self.handle(agent, "create a futuristic website called index.html")
+        out = self.handle(agent, "change the title of it to something else")
+        html = open(os.path.join(work, "index.html"), encoding="utf-8").read()
+        self.assertGreater(html.count("\n"), 400, out)
 
     def test_backend_streams(self):
         be = y2b.OpenAIBackend("http://127.0.0.1:%d" % self.port)
