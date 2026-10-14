@@ -1325,12 +1325,38 @@ class Agent:
             self._http = srv = (proc, self.tools.work, port)
             time.sleep(0.7)
         url = "http://127.0.0.1:%d/%s" % (srv[2], urllib.parse.quote(rel))
-        for tool in ("termux-open-url", "xdg-open", "open"):
+        up = False
+        for _ in range(12):  # make sure the local server really answers before launching a browser
+            try:
+                urllib.request.build_opener(urllib.request.ProxyHandler({})).open(url, timeout=1).read(1)
+                up = True
+                break
+            except Exception:
+                time.sleep(0.3)
+        if not up:
+            print(RD("the local web server did not answer. Try /open again, or run: python -m http.server in %s" % self.tools.work))
+        launchers = []
+        if shutil.which("termux-open-url"):
+            launchers.append(["termux-open-url", url])
+        if shutil.which("am"):  # Android activity manager: works even when termux-open-url does not
+            launchers.append(["am", "start", "--user", "0", "-a", "android.intent.action.VIEW", "-d", url])
+        for tool in ("xdg-open", "open"):
             if shutil.which(tool):
-                subprocess.Popen([tool, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(GR("→ opened ") + url + DM("  (stays live until you quit Y2B)"))
-                return True
-        print(YE("open this link in your browser: ") + url)
+                launchers.append([tool, url])
+        opened = False
+        for cmd in launchers:
+            try:
+                r = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=10)
+            except (subprocess.TimeoutExpired, OSError):
+                continue
+            if r.returncode == 0 and "error" not in (r.stderr or "").lower():
+                opened = True
+                break
+        if opened:
+            print(GR("→ asked the browser to open ") + url)
+        else:
+            print(YE("could not start a browser automatically."))
+        print(BD("Link: ") + url + DM("  (copy it into Chrome if nothing opened; it stays live until you quit Y2B)"))
         return True
 
     def gen_code(self, msgs, name):
@@ -1351,8 +1377,12 @@ class Agent:
                 name = self.infer_name(text)  # "create a web birthday calculator" -> birthday_calculator.html
             else:
                 return False
-        if web and name.lower().endswith((".html", ".htm")) and web.wants_site(text):
-            return self.site_task(name, text)
+        if web and name.lower().endswith((".html", ".htm")):
+            if web.wants_site(text):
+                return self.site_task(name, text)
+            kind = web.detect_app(text)
+            if kind:
+                return self.app_task(name, kind, text)
         base = [{"role": "system", "content": self.gen_system(name)},
                 {"role": "user", "content": "File: %s\nTask: %s" % (name, text)}]
         code, reply = self.gen_code(base, name)
@@ -1361,6 +1391,12 @@ class Agent:
             return True
         say("Here's %s:" % name)
         return self.finish_file(name, code, text, base)
+
+    def app_task(self, name, kind, text, verb="Created", accent=None):
+        """Plain calculator / to-do / stopwatch / timer / clock: tested template, no model needed."""
+        code = web.build_app(kind, text, accent)
+        say("Here's %s (ready-made %s with glow effects):" % (name, kind))
+        return self.finish_file(name, code, text, None, verb=verb, fixable=False)
 
     def site_task(self, name, text, verb="Created", current=""):
         """Full website: the model writes only short CONTENT lines, y2b_web assembles the tested page."""
@@ -1513,6 +1549,10 @@ class Agent:
         name = self.last_file
         with open(p, errors="replace") as f:
             old = f.read()
+        am = re.search(r'name="generator" content="y2b-app:(\w+):(#[0-9a-fA-F]{6})"', old[:4000]) if web else None
+        if am:
+            return self.app_task(name, am.group(1), text + (" open it" if re.search(r"fix|work|open", text, re.I) else ""),
+                                 verb="Updated", accent=web.app_accent(text, am.group(2)))
         if web and 'name="generator" content="y2b-site"' in old[:4000]:
             m = re.search(r"const SITE=(\{.*?\});\n", old, re.S)
             cur = ""

@@ -592,3 +592,196 @@ addEventListener("load",moveInd);
 </body>
 </html>
 '''
+
+
+# ═══════════════════ ready-made mini apps (no model needed) ═══════════════════
+APP_COLORS = {"cyan": "#22e0ff", "blue": "#4da3ff", "red": "#ff4d6d", "green": "#39ff88", "purple": "#a66bff",
+              "violet": "#a66bff", "pink": "#ff6bd6", "orange": "#ff9f43", "yellow": "#ffd93d"}
+_APP_KINDS = [
+    ("calculator", r"calculator|calc"),
+    ("todo", r"to-?do(?:\s+(?:list|app))?|task\s+(?:list|manager)"),
+    ("stopwatch", r"stop\s*watch"),
+    ("timer", r"countdown(?:\s+timer)?|timer"),
+    ("clock", r"clock"),
+]
+# words that may sit in front of the app name without changing what it is ("glowing calculator")
+_PRE_OK = set("a an the web html modern simple glowing glow neon cool basic beautiful responsive nice new stylish sleek "
+              "dark light digital mobile working full me my great awesome javascript css futuristic live live-time "
+              "online interactive fancy pretty small tiny animated minimal elegant premium colorful colourful "
+              "create make build write generate for".split()) | set(APP_COLORS)
+
+
+def detect_app(text: str):
+    """Return 'calculator' / 'todo' / 'stopwatch' / 'timer' / 'clock' for plain requests, else None.
+    'birthday calculator' or 'alarm clock' are NOT plain, so they still go to the model."""
+    low = (text or "").lower()
+    if len(low) > 400:
+        return None
+    for kind, pat in _APP_KINDS:
+        m = re.search(r"\b(%s)\b" % pat, low)
+        if not m:
+            continue
+        before = re.findall(r"[a-z0-9\-]+", low[:m.start()])
+        if before and before[-1] not in _PRE_OK:
+            continue
+        return kind
+    return None
+
+
+def app_accent(text: str, default: str = "#22e0ff") -> str:
+    for w in re.findall(r"[a-z]+", (text or "").lower()):
+        if w in APP_COLORS:
+            return APP_COLORS[w]
+    m = re.search(r"#[0-9a-fA-F]{6}\b", text or "")
+    return m.group(0) if m else default
+
+
+def build_app(kind: str, text: str = "", accent: str | None = None) -> str:
+    kind = kind if kind in APPS else "calculator"
+    acc = accent or app_accent(text)
+    title, body, script = APPS[kind]
+    out = APP_SHELL.replace("__TITLE__", title).replace("__ACC__", acc).replace("__KIND__", kind)
+    return out.replace("__BODY__", body).replace("__SCRIPT__", script)
+
+
+APP_SHELL = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="generator" content="y2b-app:__KIND__:__ACC__">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__TITLE__</title>
+<style>
+:root{--ac:__ACC__;--bg:#05070f;--card:rgba(255,255,255,.06);--bd:rgba(255,255,255,.14);--tx:#eaf0ff;--mu:#8b97bd}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{min-height:100svh;display:grid;place-items:center;padding:16px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--tx);
+background:radial-gradient(700px 420px at 20% 0%,color-mix(in srgb,var(--ac) 20%,transparent),transparent),radial-gradient(600px 420px at 100% 100%,color-mix(in srgb,var(--ac) 14%,transparent),#05070f 70%),var(--bg)}
+.app{width:min(380px,100%);padding:22px;border-radius:26px;background:var(--card);border:1px solid var(--bd);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+box-shadow:0 0 0 1px color-mix(in srgb,var(--ac) 30%,transparent),0 0 38px color-mix(in srgb,var(--ac) 35%,transparent),0 30px 70px rgba(0,0,0,.55);animation:pop .6s cubic-bezier(.2,.9,.2,1) both}
+@keyframes pop{from{opacity:0;transform:translateY(18px) scale(.97)}}
+h1{font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--ac);margin-bottom:14px;text-shadow:0 0 12px var(--ac)}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--bd);background:rgba(255,255,255,.07);border-radius:16px;transition:transform .12s,box-shadow .2s,background .2s}
+button:hover{box-shadow:0 0 18px color-mix(in srgb,var(--ac) 55%,transparent);border-color:var(--ac)}
+button:active{transform:scale(.94)}
+button.pri{background:var(--ac);color:#04060d;font-weight:700;border-color:transparent;box-shadow:0 0 24px color-mix(in srgb,var(--ac) 60%,transparent)}
+input[type=text],input[type=number]{width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--bd);background:rgba(0,0,0,.3);outline:0}
+input:focus{border-color:var(--ac);box-shadow:0 0 14px color-mix(in srgb,var(--ac) 50%,transparent)}
+.big{font:700 clamp(40px,12vw,56px)/1.1 ui-monospace,Menlo,Consolas,monospace;color:var(--ac);text-shadow:0 0 22px var(--ac);text-align:center;margin:10px 0 18px;letter-spacing:.02em}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.row button{padding:13px 0}
+.mu{color:var(--mu);font-size:14px;text-align:center}
+.calc{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.calc .scr{grid-column:1/-1;text-align:right;padding:14px 16px;border-radius:18px;background:rgba(0,0,0,.4);border:1px solid var(--bd);min-height:92px;display:grid;align-content:end;overflow:hidden}
+.calc .h{color:var(--mu);font-size:14px;min-height:20px;font-family:ui-monospace,Menlo,monospace}
+.calc .v{font:700 36px ui-monospace,Menlo,monospace;color:var(--ac);text-shadow:0 0 18px var(--ac);word-break:break-all}
+.calc button{height:62px;font-size:22px}.calc .op{color:var(--ac)}
+ul{list-style:none;padding:0;display:grid;gap:8px;margin-top:14px;max-height:48vh;overflow:auto}
+li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid var(--bd)}
+li span{flex:1;word-break:break-word}li.done span{text-decoration:line-through;opacity:.45}
+li input{width:20px;height:20px;accent-color:var(--ac)}li button{width:34px;height:34px;border-radius:10px;padding:0}
+.ring{display:block;margin:6px auto 4px;width:210px;height:210px}
+.ring circle{fill:none;stroke-width:9}.ring .t{stroke:rgba(255,255,255,.09)}.ring .p{stroke:var(--ac);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;filter:drop-shadow(0 0 8px var(--ac));transition:stroke-dashoffset .25s linear}
+.ring text{fill:var(--ac);font:700 38px ui-monospace,Menlo,monospace;text-anchor:middle;dominant-baseline:central}
+.fields{display:flex;gap:10px;margin-bottom:12px}.fields label{flex:1;font-size:12px;color:var(--mu);display:grid;gap:5px}
+.clk{width:220px;height:220px;display:block;margin:4px auto 6px}
+.clk .f{fill:rgba(0,0,0,.35);stroke:var(--ac);stroke-width:2;filter:drop-shadow(0 0 8px var(--ac))}
+.clk .m{stroke:var(--mu);stroke-width:2}.clk .h,.clk .mn{stroke:var(--tx);stroke-linecap:round}.clk .s{stroke:var(--ac);stroke-linecap:round;filter:drop-shadow(0 0 4px var(--ac))}
+</style>
+</head>
+<body>
+<main class="app"><h1>__TITLE__</h1>
+__BODY__
+</main>
+<script>
+"use strict";
+const $=q=>document.querySelector(q);
+let AC=null;function beep(f,d){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f||520;g.gain.value=.06;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+(d||.08));o.stop(AC.currentTime+(d||.08))}catch(e){}}
+const store={get(k,d){try{const v=localStorage.getItem("y2b_app_"+k);return v===null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("y2b_app_"+k,JSON.stringify(v))}catch(e){}}};
+__SCRIPT__
+</script>
+</body>
+</html>
+'''
+
+_CALC_BODY = '<div class="calc" id="calc"><div class="scr"><div class="h" id="h">&nbsp;</div><div class="v" id="v">0</div></div></div>'
+_CALC_JS = r'''
+let cur="0",prev=null,op=null,fresh=true,hist="";
+const sym={"*":"×","/":"÷","-":"−","+":"+"};
+const fmt=n=>isFinite(n)?String(+n.toPrecision(12)):"Error";
+const calc=(a,b,o)=>o==="+"?a+b:o==="-"?a-b:o==="*"?a*b:o==="/"?(b===0?NaN:a/b):b;
+function show(){$("#v").textContent=cur.length>13?(+cur).toPrecision(9):cur;$("#h").innerHTML=hist||"&nbsp;"}
+function press(k){
+  if(cur==="Error"&&k!=="C"){cur="0"}
+  if(/^\d$/.test(k)){cur=(fresh||cur==="0")?k:cur+k;fresh=false}
+  else if(k==="."){if(fresh){cur="0.";fresh=false}else if(!cur.includes("."))cur+="."}
+  else if(k==="C"){cur="0";prev=op=null;fresh=true;hist=""}
+  else if(k==="⌫"){cur=(!fresh&&cur.length>1)?cur.slice(0,-1):"0"}
+  else if(k==="±"){if(cur!=="0"&&cur!=="Error")cur=cur[0]==="-"?cur.slice(1):"-"+cur}
+  else if(k==="%"){cur=fmt(parseFloat(cur)/100);fresh=true}
+  else if(k==="="){if(op!==null&&prev!==null){const b=parseFloat(cur);hist=fmt(prev)+" "+sym[op]+" "+fmt(b)+" =";cur=fmt(calc(prev,b,op));prev=op=null;fresh=true}}
+  else{if(op!==null&&!fresh){cur=fmt(calc(prev,parseFloat(cur),op))}prev=parseFloat(cur);op=k;fresh=true;hist=fmt(prev)+" "+sym[k]}
+  show();beep(480+Math.random()*120,.04);
+}
+["C","±","%","/","7","8","9","*","4","5","6","-","1","2","3","+","0",".","⌫","="].forEach(k=>{
+  const b=document.createElement("button");b.textContent=sym[k]&&k!=="+"?sym[k]:k;if(/[\/*\-+]/.test(k))b.className="op";if(k==="=")b.className="pri";b.onclick=()=>press(k);$("#calc").appendChild(b)});
+addEventListener("keydown",e=>{if(e.ctrlKey||e.metaKey)return;const k=e.key==="Enter"?"=":e.key==="Backspace"?"⌫":e.key==="Escape"?"C":e.key;if(/^[0-9.+\-*\/%=C]$|^⌫$/.test(k)){e.preventDefault();press(k)}});
+show();
+'''
+_TODO_BODY = '<div class="row"><input type="text" id="in" placeholder="Add a task..." maxlength="120" style="flex:4"><button class="pri" id="add" style="flex:1">+</button></div><ul id="ls"></ul><p class="mu" id="ct" style="margin-top:12px"></p>'
+_TODO_JS = r'''
+let tasks=store.get("tasks",[]);
+function draw(){const u=$("#ls");u.textContent="";tasks.forEach((t,i)=>{const li=document.createElement("li");if(t.d)li.className="done";
+  const c=document.createElement("input");c.type="checkbox";c.checked=!!t.d;c.onchange=()=>{t.d=c.checked;store.set("tasks",tasks);draw();beep(c.checked?700:450)};
+  const s=document.createElement("span");s.textContent=t.t;const x=document.createElement("button");x.textContent="✕";x.setAttribute("aria-label","Delete");x.onclick=()=>{tasks.splice(i,1);store.set("tasks",tasks);draw()};
+  li.append(c,s,x);u.appendChild(li)});const d=tasks.filter(t=>t.d).length;$("#ct").textContent=tasks.length?d+" of "+tasks.length+" done":"Nothing here yet. Add your first task."}
+function add(){const v=$("#in").value.trim();if(!v)return;tasks.push({t:v,d:false});store.set("tasks",tasks);$("#in").value="";draw();beep(620)}
+$("#add").onclick=add;$("#in").addEventListener("keydown",e=>{if(e.key==="Enter")add()});draw();
+'''
+_SW_BODY = '<div class="big" id="d">00:00.00</div><div class="row"><button class="pri" id="go">Start</button><button id="lap">Lap</button><button id="rs">Reset</button></div><ul id="ls"></ul>'
+_SW_JS = r'''
+let run=false,t0=0,acc=0,raf=0,laps=[];
+const f=ms=>{const m=Math.floor(ms/6e4),s=Math.floor(ms/1e3)%60,c=Math.floor(ms/10)%100;return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")+"."+String(c).padStart(2,"0")};
+const now=()=>acc+(run?performance.now()-t0:0);
+function loop(){$("#d").textContent=f(now());if(run)raf=requestAnimationFrame(loop)}
+$("#go").onclick=()=>{if(run){acc+=performance.now()-t0;run=false;$("#go").textContent="Start"}else{t0=performance.now();run=true;$("#go").textContent="Stop";loop()}beep(600)};
+$("#lap").onclick=()=>{const t=now();if(t<=0)return;laps.unshift(f(t));const u=$("#ls");u.textContent="";laps.forEach((l,i)=>{const li=document.createElement("li");const a=document.createElement("span");a.textContent="Lap "+(laps.length-i);const b=document.createElement("span");b.style.cssText="flex:none;color:var(--ac)";b.textContent=l;li.append(a,b);u.appendChild(li)});beep(520)};
+$("#rs").onclick=()=>{run=false;cancelAnimationFrame(raf);acc=0;laps=[];$("#ls").textContent="";$("#go").textContent="Start";$("#d").textContent="00:00.00"};
+'''
+_TIMER_BODY = ('<div class="fields"><label>Minutes<input type="number" id="mi" min="0" max="999" value="5"></label><label>Seconds<input type="number" id="se" min="0" max="59" value="0"></label></div>'
+               '<svg class="ring" viewBox="0 0 120 120"><circle class="t" cx="60" cy="60" r="52"/><circle class="p" id="pg" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="0"/><text x="60" y="60" id="tx" style="font-size:22px">05:00</text></svg>'
+               '<p class="mu" id="st">Set a time and press Start.</p><div class="row" style="margin-top:12px"><button class="pri" id="go">Start</button><button id="rs">Reset</button></div>')
+_TIMER_JS = r'''
+let total=300,left=300,run=false,end=0,id=0;
+const f=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+function setFromInputs(){total=Math.max(1,(+$("#mi").value||0)*60+(+$("#se").value||0));left=total;if(!run){$("#st").textContent="Set a time and press Start.";$("#go").textContent="Start"}draw()}
+function draw(){const s=Math.max(0,left);$("#tx").textContent=f(Math.ceil(s));$("#pg").style.strokeDashoffset=326.7*(1-(total?s/total:0))}
+function tick(){left=(end-performance.now())/1000;if(left<=0){left=0;run=false;clearInterval(id);$("#go").textContent="Start";$("#st").textContent="Time is up!";draw();beep(880,.5);setTimeout(()=>beep(880,.5),600);return}draw()}
+$("#go").onclick=()=>{if(run){run=false;clearInterval(id);$("#go").textContent="Resume";$("#st").textContent="Paused";return}
+  if(left<=0)setFromInputs();end=performance.now()+left*1000;run=true;$("#go").textContent="Pause";$("#st").textContent="Running...";id=setInterval(tick,100);beep(600)};
+$("#rs").onclick=()=>{run=false;clearInterval(id);$("#go").textContent="Start";$("#st").textContent="Set a time and press Start.";setFromInputs()};
+["#mi","#se"].forEach(s=>$(s).addEventListener("input",()=>{if(!run){setFromInputs()}}));
+setFromInputs();
+'''
+_CLOCK_BODY = ('<svg class="clk" viewBox="0 0 200 200"><circle class="f" cx="100" cy="100" r="94"/><g id="mk"></g>'
+               '<line class="h" id="hh" x1="100" y1="100" x2="100" y2="58" stroke-width="6"/><line class="mn" id="mm" x1="100" y1="100" x2="100" y2="36" stroke-width="4"/>'
+               '<line class="s" id="ss" x1="100" y1="112" x2="100" y2="26" stroke-width="2"/><circle cx="100" cy="100" r="5" fill="var(--ac)"/></svg>'
+               '<div class="big" id="dg">--:--:--</div><p class="mu" id="dt"></p><div class="row" style="margin-top:12px"><button id="fm">24-hour</button></div>')
+_CLOCK_JS = r'''
+let h24=store.get("h24",true);
+for(let i=0;i<60;i++){const a=i*6*Math.PI/180,l=i%5?4:10,x1=100+Math.sin(a)*(88-l),y1=100-Math.cos(a)*(88-l),x2=100+Math.sin(a)*88,y2=100-Math.cos(a)*88;
+  const e=document.createElementNS("http://www.w3.org/2000/svg","line");e.setAttribute("class","m");e.setAttribute("x1",x1);e.setAttribute("y1",y1);e.setAttribute("x2",x2);e.setAttribute("y2",y2);$("#mk").appendChild(e)}
+function tick(){const d=new Date(),s=d.getSeconds()+d.getMilliseconds()/1000,m=d.getMinutes()+s/60,h=(d.getHours()%12)+m/60;
+  $("#ss").setAttribute("transform","rotate("+s*6+" 100 100)");$("#mm").setAttribute("transform","rotate("+m*6+" 100 100)");$("#hh").setAttribute("transform","rotate("+h*30+" 100 100)");
+  $("#dg").textContent=d.toLocaleTimeString([],{hour12:!h24});$("#dt").textContent=d.toLocaleDateString([],{weekday:"long",year:"numeric",month:"long",day:"numeric"});$("#fm").textContent=h24?"Switch to 12-hour":"Switch to 24-hour"}
+$("#fm").onclick=()=>{h24=!h24;store.set("h24",h24);tick();beep(560)};
+setInterval(tick,100);tick();
+'''
+APPS = {
+    "calculator": ("Calculator", _CALC_BODY, _CALC_JS),
+    "todo": ("To-Do List", _TODO_BODY, _TODO_JS),
+    "stopwatch": ("Stopwatch", _SW_BODY, _SW_JS),
+    "timer": ("Countdown Timer", _TIMER_BODY, _TIMER_JS),
+    "clock": ("Clock", _CLOCK_BODY, _CLOCK_JS),
+}

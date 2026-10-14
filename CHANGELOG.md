@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+- **Ready-made mini apps.** Plain requests for a calculator, to-do list, stopwatch, countdown timer or clock (for example "create a web calculator with glow effects") now come from tested glow-styled templates instead of the model, so the page always renders and works. Colour words work ("make a red todo list"), and follow-ups such as "make it green" recolour the same file. Specific variants like "birthday calculator" or "alarm clock" still go to the model.
+
+## 1.2.1
+- Opening a page in the browser is now verified: the local server is checked before launching, `termux-open-url` is tried first and Android's `am start` second, and Y2B only says it asked the browser to open when a launcher really succeeded. The link is always printed so it can be pasted into Chrome.
+
 ## 1.2.0
 - **Full websites on small models.** A tiny local model cannot write 500+ lines of working JavaScript, so asking for a website gave blank or basic pages. Y2B now asks the model only for short CONTENT lines (title, tagline, features, gallery items, FAQ, about) and assembles a finished, browser-tested page from a built-in template (`y2b_web.py`): loading screen, particle hero with orb and parallax, live clock, animated nav with mobile drawer, theme toggle, search/filter/sort gallery with preview modal, accordion, tabs, particle lab with sliders and colour pickers, calculator, stopwatch, notes, task list, command palette (Ctrl+K or /), keyboard shortcuts, settings panel, toasts, optional sound, reduced-motion support. Works offline, one HTML file.
 - Triggered by words like website, portfolio, futuristic, ultra-modern. New `/site <topic>` command. Follow-ups such as "change the title" rebuild the site instead of asking the small model to rewrite 47 KB.

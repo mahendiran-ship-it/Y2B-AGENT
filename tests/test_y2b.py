@@ -173,6 +173,23 @@ class WebBuilderTests(unittest.TestCase):
         self.assertNotIn("__A1__", html)
         self.assertNotIn("/*SITE*/null", html)
 
+    def test_detect_app(self):
+        import y2b_web as w
+        self.assertEqual(w.detect_app("create a web calculator in modern way with glow effects"), "calculator")
+        self.assertEqual(w.detect_app("make a red glowing todo list"), "todo")
+        self.assertEqual(w.detect_app("make a countdown timer"), "timer")
+        self.assertEqual(w.detect_app("a digital clock"), "clock")
+        for t in ("birthday calculator web", "alarm clock page", "write a python calculator", "create a futuristic website"):
+            self.assertIsNone(w.detect_app(t), t)
+
+    def test_every_app_builds_clean(self):
+        import y2b_web as w
+        for k in w.APPS:
+            h = w.build_app(k, "make it purple")
+            self.assertIn("--ac:#a66bff", h)
+            self.assertNotIn("__", h.replace("__proto__", ""))
+            self.assertEqual(h.count("</script>"), 1)
+
     def test_template_has_every_required_piece(self):
         import y2b_web as w
         html = w.build_site()
@@ -230,6 +247,56 @@ class AgentTests(unittest.TestCase):
         out = self.handle(agent, "change the title of it to something else")
         html = open(os.path.join(work, "index.html"), encoding="utf-8").read()
         self.assertGreater(html.count("\n"), 400, out)
+
+    def test_open_falls_back_when_first_launcher_fails(self):
+        a, work = self.make_agent()
+        with open(os.path.join(work, "x.html"), "w") as f:
+            f.write("<h1>hi</h1>")
+        bindir = tempfile.mkdtemp()
+        log = os.path.join(bindir, "am.log")
+        for nm, body in (("termux-open-url", "#!/bin/sh\nexit 1\n"), ("am", "#!/bin/sh\necho \"$@\" > %s\n" % log)):
+            p = os.path.join(bindir, nm)
+            with open(p, "w") as f:
+                f.write(body)
+            os.chmod(p, 0o755)
+        old = os.environ["PATH"]
+        os.environ["PATH"] = bindir + os.pathsep + old
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                self.assertTrue(a.open_in_browser("x.html"))
+        finally:
+            os.environ["PATH"] = old
+            a._http[0].terminate()
+        out = buf.getvalue()
+        self.assertIn("asked the browser to open", out)
+        self.assertIn("Link: http://127.0.0.1", out)
+        self.assertIn("android.intent.action.VIEW", open(log).read())
+
+    def test_plain_calculator_uses_template_not_model(self):
+        agent, work = self.make_agent()
+        out = self.handle(agent, "create a web calculator in modern way with glow effects")
+        files = [f for f in os.listdir(work) if f.endswith(".html")]
+        self.assertEqual(len(files), 1, out)
+        html = open(os.path.join(work, files[0]), encoding="utf-8").read()
+        self.assertIn('id="calc"', html)
+        self.assertNotIn("BUGGY", html)
+        self.assertEqual(agent.check_html(files[0])[0], 0)
+
+    def test_app_follow_up_changes_colour_in_place(self):
+        agent, work = self.make_agent()
+        agent.open_in_browser = lambda n: True
+        self.handle(agent, "make a calculator called calc.html")
+        out = self.handle(agent, "make it red")
+        html = open(os.path.join(work, "calc.html"), encoding="utf-8").read()
+        self.assertIn("--ac:#ff4d6d", html, out)
+        self.assertIn('id="calc"', html)
+
+    def test_birthday_calculator_still_goes_to_model(self):
+        agent, work = self.make_agent()
+        self.handle(agent, "create a web birthday calculator")
+        files = [f for f in os.listdir(work) if f.endswith(".html")]
+        self.assertTrue(files and "y2b-app" not in open(os.path.join(work, files[0]), encoding="utf-8").read())
 
     def test_backend_streams(self):
         be = y2b.OpenAIBackend("http://127.0.0.1:%d" % self.port)
